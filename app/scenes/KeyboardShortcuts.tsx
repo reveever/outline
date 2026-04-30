@@ -285,6 +285,15 @@ function KeyboardShortcuts({ defaultQuery = "" }: Props) {
             ),
             label: t("Move block down"),
           },
+          {
+            shortcut: (
+              <>
+                <Key symbol>{metaDisplay}</Key> + <Key symbol>⇧</Key> +{" "}
+                <Key>v</Key>
+              </>
+            ),
+            label: t("Paste as plain text"),
+          },
         ],
       },
       {

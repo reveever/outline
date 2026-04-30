@@ -22,6 +22,7 @@ Fork of `outline/outline`. Remotes: `origin` → `reveever/outline`, `upstream` 
 - `plugins/search-postgres/server/PostgresSearchProvider.ts` — `preprocessCJK()` + reads from `"searchVectorCJK"` instead of `"searchVector"`.
 - `server/migrations/20260429000000-cjk-tokenize-search.js` — adds `searchVectorCJK` column + GIN index, `outline_split_cjk()` helper, rewrites `documents_search_trigger()` to maintain both vectors.
 - `app/editor/extensions/PasteHandler.tsx` — adds a Shift+Cmd/Ctrl+V branch right after the in-code-block branch that calls `tr.insertText(text)` to bypass markdown / HTML parsers entirely (true plain-text paste; mirrors the code-block behavior).
+- `app/scenes/KeyboardShortcuts.tsx` — documents the Shift+Cmd/Ctrl+V "Paste as plain text" entry at the end of the Formatting section. Upstream edits this file often; expect conflicts on every rebase, re-add the entry.
 - `.github/workflows/docker.yml` — single-arch amd64, pushes to `reveever/outline` and `reveever/outline-base`.
 
 **Things to watch:**
