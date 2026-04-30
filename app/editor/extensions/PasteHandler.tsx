@@ -92,6 +92,14 @@ export default class PasteHandler extends Extension {
               return true;
             }
 
+            // Shift + Cmd/Ctrl + V — true plain-text paste. Bypass markdown /
+            // HTML parsers entirely, exactly like the code-block branch above.
+            if (this.shiftKey) {
+              event.preventDefault();
+              view.dispatch(state.tr.insertText(text));
+              return true;
+            }
+
             // Because VSCode is an especially popular editor that places metadata
             // on the clipboard, we can parse it to find out what kind of content
             // was pasted.
