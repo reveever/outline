@@ -2,7 +2,7 @@ import { action, observable } from "mobx";
 import { v4 as uuidv4 } from "uuid";
 import { toggleMark } from "prosemirror-commands";
 import type { Node } from "prosemirror-model";
-import { Slice } from "prosemirror-model";
+import { Fragment, Slice } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
@@ -93,10 +93,29 @@ export default class PasteHandler extends Extension {
             }
 
             // Shift + Cmd/Ctrl + V — true plain-text paste. Bypass markdown /
-            // HTML parsers entirely, exactly like the code-block branch above.
+            // HTML parsers entirely. Unlike the code-block branch, we cannot
+            // just call tr.insertText: in a regular paragraph, text nodes are
+            // inline content and \n is not valid; ProseMirror initially renders
+            // them but coalesces them on the next transaction, so any edit
+            // would silently collapse the line breaks. Instead, split on
+            // newlines and emit one paragraph per line via a Slice.
             if (this.shiftKey) {
               event.preventDefault();
-              view.dispatch(state.tr.insertText(text));
+              const paragraphType = state.schema.nodes.paragraph;
+              const lines = text.replace(/\r\n?/g, "\n").split("\n");
+              const nodes = lines.map((line) =>
+                line.length
+                  ? paragraphType.create(null, state.schema.text(line))
+                  : paragraphType.create()
+              );
+              const slice = new Slice(Fragment.from(nodes), 1, 1);
+              view.dispatch(
+                state.tr
+                  .replaceSelection(slice)
+                  .scrollIntoView()
+                  .setMeta("paste", true)
+                  .setMeta("uiEvent", "paste")
+              );
               return true;
             }
 
