@@ -13,6 +13,35 @@ There is a web client which is fully responsive and works on mobile devices.
 
 Refer to /docs/ARCHITECTURE.md for detailed architecture documentation.
 
+## Fork Maintenance
+
+Fork of `outline/outline`. Remotes: `origin` → `reveever/outline`, `upstream` → `outline/outline` (read-only). Long-running custom branch: `cjk-search`. Tag convention: `v<upstream>-cjk.<n>`.
+
+**Custom files (don't lose during rebase):**
+
+- `plugins/search-postgres/server/PostgresSearchProvider.ts` — `preprocessCJK()` + reads from `"searchVectorCJK"` instead of `"searchVector"`.
+- `server/migrations/20260429000000-cjk-tokenize-search.js` — adds `searchVectorCJK` column + GIN index, `outline_split_cjk()` helper, rewrites `documents_search_trigger()` to maintain both vectors.
+- `.github/workflows/docker.yml` — single-arch amd64, pushes to `reveever/outline` and `reveever/outline-base`.
+
+**Things to watch:**
+
+- 🔴 **Trigger override trap.** If an upstream migration runs `CREATE OR REPLACE FUNCTION documents_search_trigger()`, it silently overwrites our dual-vector trigger and Chinese search degrades with no error. Every upgrade: `git diff v<OLD> v<NEW> -- server/migrations/` — if anything touches the trigger / `searchVector`, add a new `<date>-restore-cjk-trigger.js` migration after the rebase, timestamped later than upstream's. Verify with `SELECT pg_get_functiondef('documents_search_trigger'::regproc)` — must assign to both vectors.
+- Conflict hot zones: `PostgresSearchProvider.ts` (port `preprocessCJK` and `searchVectorCJK` to upstream's new shape; if upstream ships native CJK, `git rebase --skip` and drop the migration); `yarn.lock` (`git checkout --theirs && yarn install`); `.github/workflows/docker.yml` (`git checkout --ours` by default, diff upstream first to spot fixes worth absorbing).
+
+**Upgrade steps:**
+
+```bash
+git fetch upstream --tags
+git checkout main && git reset --hard upstream/main && git push origin main
+git checkout cjk-search && git rebase v<NEW>     # resolve conflicts
+yarn install && yarn tsc && yarn lint
+yarn test plugins/search-postgres/server/PostgresSearchProvider.test.ts
+git push origin cjk-search --force-with-lease
+git tag v<NEW>-cjk.1 && git push origin v<NEW>-cjk.1   # triggers docker workflow
+```
+
+Post-deploy: confirm `searchVectorCJK` column + `documents_tsv_cjk_idx` index exist, trigger body assigns to both vectors, single-character Chinese search hits.
+
 ## Instructions
 
 You're an expert in the following areas:
