@@ -68,6 +68,15 @@ export default class PostgresSearchProvider extends BaseSearchProvider {
   );
 
   /**
+   * Matches a single CJK character (Han, Hiragana, Katakana, Hangul). The
+   * indexing trigger inserts spaces around each such character so that
+   * Postgres tokenizes per-character; the same preprocessing must be
+   * applied to user queries to keep the query and the index in sync.
+   */
+  private static readonly CJK_CHAR_REGEX =
+    /([\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff])/gu;
+
+  /**
    * Cached stop words set for efficient lookup.
    * Based on: https://github.com/postgres/postgres/blob/fc0d0ce978752493868496be6558fa17b7c4c3cf/src/backend/snowball/stopwords/english.stop
    */
@@ -525,8 +534,8 @@ export default class PostgresSearchProvider extends BaseSearchProvider {
 
     if (query) {
       const rankExpression = usePopularityBoost
-        ? `ts_rank("searchVector", to_tsquery('english', :query)) * (1 + 0.25 * LN(1 + COALESCE("popularityScore", 0)))`
-        : `ts_rank("searchVector", to_tsquery('english', :query))`;
+        ? `ts_rank("searchVectorCJK", to_tsquery('english', :query)) * (1 + 0.25 * LN(1 + COALESCE("popularityScore", 0)))`
+        : `ts_rank("searchVectorCJK", to_tsquery('english', :query))`;
 
       attributes.push([Sequelize.literal(rankExpression), "searchRanking"]);
       replacements["query"] = PostgresSearchProvider.webSearchQuery(query);
@@ -781,7 +790,7 @@ export default class PostgresSearchProvider extends BaseSearchProvider {
       if (limitedQuery || iLikeQueries.length === 0) {
         where[Op.and].push(
           Sequelize.fn(
-            `"searchVector" @@ to_tsquery`,
+            `"searchVectorCJK" @@ to_tsquery`,
             "english",
             Sequelize.literal(":query")
           )
@@ -829,8 +838,10 @@ export default class PostgresSearchProvider extends BaseSearchProvider {
    */
   public static webSearchQuery(query: string): string {
     // limit length of search queries as we're using regex against untrusted input
-    let limitedQuery = PostgresSearchProvider.escapeQuery(
-      query.slice(0, PostgresSearchProvider.maxQueryLength)
+    let limitedQuery = PostgresSearchProvider.preprocessCJK(
+      PostgresSearchProvider.escapeQuery(
+        query.slice(0, PostgresSearchProvider.maxQueryLength)
+      )
     );
 
     const quotedSearch =
@@ -868,6 +879,19 @@ export default class PostgresSearchProvider extends BaseSearchProvider {
         // Remove any trailing escape characters
         .replace(/\\$/, "")
     );
+  }
+
+  /**
+   * Insert spaces around each CJK character so that PostgreSQL's tokenizer
+   * treats every character as a separate token. Must mirror the indexing
+   * logic in the `outline_split_cjk` SQL helper used by the search trigger.
+   *
+   * @param query - the (already escaped) search query.
+   * @returns the query with spaces inserted around each CJK character.
+   */
+  private static preprocessCJK(query: string): string {
+    PostgresSearchProvider.CJK_CHAR_REGEX.lastIndex = 0;
+    return query.replace(PostgresSearchProvider.CJK_CHAR_REGEX, " $1 ");
   }
 
   private static escapeQuery(query: string): string {
